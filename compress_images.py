@@ -58,12 +58,12 @@ def resize_image(image_path, max_dimension=2000):
 
 # Function to process a single image
 def process_image(args):
-    api_keys, image_path, failed_apis = args
+    api_keys, image_path, failed_apis, stop_flag = args
     current_api_index = 0
 
     if os.path.getsize(image_path) < 200 * 1024:  # Skip files under 200KB
         print(f"Skipping {image_path}, size under 200KB")
-        return
+        return True
 
     resize_image(image_path)  # Resize if needed
 
@@ -78,10 +78,11 @@ def process_image(args):
             return True
         except Exception as e:
             print(f"Error with API key {current_api_index}: {e}")
-            failed_apis.add(api_keys[current_api_index])
+            failed_apis.append(api_keys[current_api_index])
             current_api_index += 1
             if current_api_index >= len(api_keys):
                 print("No more API keys available")
+                stop_flag.value = True
                 return False
 
 # Function to process images in a directory recursively
@@ -91,21 +92,22 @@ def process_directory(directory):
     image_paths = []
     manager = Manager()
     failed_apis = manager.list()
+    stop_flag = manager.Value('i', False)
 
     for root, _, files in os.walk(directory):
         for file in files:
             if file.lower().endswith(('png', 'jpg', 'jpeg')):
                 file_path = os.path.join(root, file)
                 if file_path not in processed_files:
-                    image_paths.append((api_keys, file_path, failed_apis))
+                    image_paths.append((api_keys, file_path, failed_apis, stop_flag))
                 else:
                     print(f"Skipping already processed file: {file_path}")
 
     # Use multiprocessing to process images concurrently
     with Pool(cpu_count()) as pool:
         results = pool.map(process_image, image_paths)
-        if not any(results):
-            print("All API keys failed. Stopping the script.")
+        if stop_flag.value:
+            print("Stopping script as all API keys have failed.")
             return
 
 if __name__ == "__main__":
