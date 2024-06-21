@@ -1,6 +1,7 @@
 import os
 import requests
 from PIL import Image
+from multiprocessing import Pool, cpu_count
 
 # Load API keys from the provided URL
 API_URL = 'https://raw.githubusercontent.com/arfoulidis/TAPI/main/api.txt'
@@ -44,32 +45,43 @@ def resize_image(image_path, max_dimension=2000):
             img.save(image_path)
             print(f"Resized {image_path} to {new_width}x{new_height}")
 
+# Function to process a single image
+def process_image(args):
+    api_keys, image_path = args
+    current_api_index = 0
+
+    if os.path.getsize(image_path) < 200 * 1024:  # Skip files under 200KB
+        print(f"Skipping {image_path}, size under 200KB")
+        return
+
+    resize_image(image_path)  # Resize if needed
+
+    # Try to compress the image with available API keys
+    while current_api_index < len(api_keys):
+        try:
+            compress_image(api_keys[current_api_index], image_path)
+            break
+        except Exception as e:
+            print(f"Error with API key {current_api_index}: {e}")
+            current_api_index += 1
+            if current_api_index >= len(api_keys):
+                print("No more API keys available")
+                return
+
 # Function to process images in a directory recursively
 def process_directory(directory):
     api_keys = load_api_keys()
-    current_api_index = 0
+    image_paths = []
 
     for root, _, files in os.walk(directory):
         for file in files:
             if file.lower().endswith(('png', 'jpg', 'jpeg')):
                 file_path = os.path.join(root, file)
-                if os.path.getsize(file_path) < 200 * 1024:  # Skip files under 200KB
-                    print(f"Skipping {file_path}, size under 200KB")
-                    continue
+                image_paths.append((api_keys, file_path))
 
-                resize_image(file_path)  # Resize if needed
-
-                # Try to compress the image with available API keys
-                while current_api_index < len(api_keys):
-                    try:
-                        compress_image(api_keys[current_api_index], file_path)
-                        break
-                    except Exception as e:
-                        print(f"Error with API key {current_api_index}: {e}")
-                        current_api_index += 1
-                        if current_api_index >= len(api_keys):
-                            print("No more API keys available")
-                            return
+    # Use multiprocessing to process images concurrently
+    with Pool(cpu_count()) as pool:
+        pool.map(process_image, image_paths)
 
 if __name__ == "__main__":
     import sys
