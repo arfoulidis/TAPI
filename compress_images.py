@@ -1,7 +1,7 @@
 import os
 import requests
 from PIL import Image
-from multiprocessing import Pool, cpu_count
+from multiprocessing import Pool, cpu_count, Manager
 
 # Load API keys from the provided URL
 API_URL = 'https://raw.githubusercontent.com/arfoulidis/TAPI/main/api.txt'
@@ -58,7 +58,7 @@ def resize_image(image_path, max_dimension=2000):
 
 # Function to process a single image
 def process_image(args):
-    api_keys, image_path = args
+    api_keys, image_path, failed_apis = args
     current_api_index = 0
 
     if os.path.getsize(image_path) < 200 * 1024:  # Skip files under 200KB
@@ -69,35 +69,44 @@ def process_image(args):
 
     # Try to compress the image with available API keys
     while current_api_index < len(api_keys):
+        if api_keys[current_api_index] in failed_apis:
+            current_api_index += 1
+            continue
         try:
             compress_image(api_keys[current_api_index], image_path)
             log_processed_file(image_path)
-            break
+            return True
         except Exception as e:
             print(f"Error with API key {current_api_index}: {e}")
+            failed_apis.add(api_keys[current_api_index])
             current_api_index += 1
             if current_api_index >= len(api_keys):
                 print("No more API keys available")
-                return
+                return False
 
 # Function to process images in a directory recursively
 def process_directory(directory):
     api_keys = load_api_keys()
     processed_files = load_processed_files()
     image_paths = []
+    manager = Manager()
+    failed_apis = manager.list()
 
     for root, _, files in os.walk(directory):
         for file in files:
             if file.lower().endswith(('png', 'jpg', 'jpeg')):
                 file_path = os.path.join(root, file)
                 if file_path not in processed_files:
-                    image_paths.append((api_keys, file_path))
+                    image_paths.append((api_keys, file_path, failed_apis))
                 else:
                     print(f"Skipping already processed file: {file_path}")
 
     # Use multiprocessing to process images concurrently
     with Pool(cpu_count()) as pool:
-        pool.map(process_image, image_paths)
+        results = pool.map(process_image, image_paths)
+        if not any(results):
+            print("All API keys failed. Stopping the script.")
+            return
 
 if __name__ == "__main__":
     import sys
