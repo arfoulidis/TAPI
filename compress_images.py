@@ -5,11 +5,22 @@ from multiprocessing import Pool, cpu_count
 
 # Load API keys from the provided URL
 API_URL = 'https://raw.githubusercontent.com/arfoulidis/TAPI/main/api.txt'
+LOG_FILE = 'processed_files.log'
 
 def load_api_keys():
     response = requests.get(API_URL)
     response.raise_for_status()
     return response.text.strip().split('\n')
+
+def load_processed_files():
+    if os.path.exists(LOG_FILE):
+        with open(LOG_FILE, 'r') as f:
+            return set(line.strip() for line in f)
+    return set()
+
+def log_processed_file(file_path):
+    with open(LOG_FILE, 'a') as f:
+        f.write(file_path + '\n')
 
 # Function to compress image using TinyPNG API
 def compress_image(api_key, image_path):
@@ -60,6 +71,7 @@ def process_image(args):
     while current_api_index < len(api_keys):
         try:
             compress_image(api_keys[current_api_index], image_path)
+            log_processed_file(image_path)
             break
         except Exception as e:
             print(f"Error with API key {current_api_index}: {e}")
@@ -71,13 +83,17 @@ def process_image(args):
 # Function to process images in a directory recursively
 def process_directory(directory):
     api_keys = load_api_keys()
+    processed_files = load_processed_files()
     image_paths = []
 
     for root, _, files in os.walk(directory):
         for file in files:
             if file.lower().endswith(('png', 'jpg', 'jpeg')):
                 file_path = os.path.join(root, file)
-                image_paths.append((api_keys, file_path))
+                if file_path not in processed_files:
+                    image_paths.append((api_keys, file_path))
+                else:
+                    print(f"Skipping already processed file: {file_path}")
 
     # Use multiprocessing to process images concurrently
     with Pool(cpu_count()) as pool:
