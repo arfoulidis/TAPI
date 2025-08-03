@@ -170,4 +170,4 @@ if __name__ == "__main__":
         print(f"Error: Directory not found at '{directory_arg}'")
         sys.exit(1)
         
-    process_directory(directory)
+    process_directory(directory_arg)
