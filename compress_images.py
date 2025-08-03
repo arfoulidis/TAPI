@@ -9,8 +9,27 @@ from queue import Empty
 # --- Constants ---
 API_URL = 'https://raw.githubusercontent.com/arfoulidis/TAPI/main/api.txt'
 DB_FILE = 'processed_files.db'
+LOG_FILE = 'processed_files.log'
 TINYPNG_API_URL = 'https://api.tinify.com/shrink'
 MAX_DIMENSION = 2000
+
+def import_from_log():
+    """Imports file paths from the old log file into the database."""
+    if not os.path.exists(LOG_FILE):
+        return
+
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    with open(LOG_FILE, 'r') as f:
+        for line in f:
+            path = line.strip()
+            if path:
+                cursor.execute("INSERT OR IGNORE INTO processed_files (path) VALUES (?)", (path,))
+    conn.commit()
+    conn.close()
+    # Optionally, rename the log file to prevent re-importing
+    os.rename(LOG_FILE, LOG_FILE + '.imported')
+    print(f"Imported data from {LOG_FILE}")
 
 def setup_database():
     """Initializes the database and creates the processed_files table if it doesn't exist."""
@@ -23,6 +42,7 @@ def setup_database():
     ''')
     conn.commit()
     conn.close()
+    import_from_log()
 
 def load_api_keys():
     """Loads API keys from the configured URL."""
