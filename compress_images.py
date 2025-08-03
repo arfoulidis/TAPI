@@ -16,6 +16,7 @@ MAX_DIMENSION = 2000
 def import_from_log():
     """Imports file paths from the old log file into the database."""
     if not os.path.exists(LOG_FILE):
+        print("Log file not found, skipping import.")
         return
 
     conn = sqlite3.connect(DB_FILE)
